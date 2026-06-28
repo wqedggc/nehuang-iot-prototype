@@ -158,7 +158,10 @@
         showToast(res.message || '登录失败', 'error');
       }
     } catch (e) {
-      showToast('网络异常，请重试', 'error');
+      // 显示具体错误原因，方便调试（CORS/超时/mock 密码错误等）
+      var msg = e.message || '网络异常，请重试';
+      console.error('[AdminLogin] 登录失败:', e);
+      showToast(msg, 'error');
     } finally {
       btn.disabled = false;
       btn.textContent = '登录';

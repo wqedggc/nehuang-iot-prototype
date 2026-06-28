@@ -20,7 +20,10 @@
   // ============================================================
   // 配置
   // ============================================================
-  const MODE = 'real'; // 'mock' | 'real'
+  // 运行模式：
+  //   'mock'  — 纯本地 mock，不请求网络（推荐开发时使用）
+  //   'real'  — 请求真实后端，失败则自动 fallback mock（部署后使用）
+  const MODE = 'mock'; // ← 开发时用 'mock'，后端就绪后改为 'real'
   const API_BASE = 'http://43.143.208.153:8080'; // 真实后端地址
   const MOCK_DELAY = 100; // mock 模拟网络延迟（ms）
 
@@ -350,6 +353,8 @@
   }
 
   // ---------- 真实后端请求 ----------
+  const REAL_REQUEST_TIMEOUT = 5000; // 5 秒超时（CORS/网络不可达时快速 fallback）
+
   async function realRequest(method, cleanPath, query, body) {
     const headers = { 'Content-Type': 'application/json' };
     const token = localStorage.getItem('token') || localStorage.getItem('admin_token');
@@ -360,16 +365,35 @@
       url += '?' + Object.entries(query).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&');
     }
 
-    const opts = { method, headers, mode: 'cors' };
+    // 用 AbortController 实现超时（fetch 本身不支持 timeout）
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REAL_REQUEST_TIMEOUT);
+
+    const opts = { method, headers, mode: 'cors', signal: controller.signal };
     if (body && method !== 'GET') opts.body = JSON.stringify(body);
 
-    const res = await fetch(url, opts);
+    let res;
+    try {
+      res = await fetch(url, opts);
+    } catch (fetchErr) {
+      clearTimeout(timeoutId);
+      // fetch 失败有两种典型情况：
+      // 1. AbortController 触发（超时） → fetchErr.name === 'AbortError'
+      // 2. CORS/网络不可达（ERR_CONNECTION_REFUSED / net::ERR_TIMED_OUT） → TypeError
+      if (fetchErr.name === 'AbortError') {
+        console.warn('[API] 请求超时 (' + (REAL_REQUEST_TIMEOUT / 1000) + 's):', method, cleanPath, '→ fallback mock');
+        throw new Error('请求超时，已切换本地模式');
+      }
+      // CORS 错误在浏览器里也表现为 TypeError，无法区分，统一提示
+      console.warn('[API] 网络请求失败（可能 CORS 或后端不可达）:', method, cleanPath, fetchErr);
+      throw new Error('网络不可用，已切换本地模式');
+    }
+    clearTimeout(timeoutId);
 
     // 401: token 过期/无效，清除本地 token 并跳转登录
     if (res.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('admin_token');
-      const isAdmin = cleanPath.includes('/admin/');
       setTimeout(() => { window.location.hash = '#login'; }, 500);
       throw new Error('认证失败，请重新登录');
     }
@@ -386,8 +410,6 @@
     }
 
     const json = await res.json();
-    // 后端返回格式：{ data: ... } 或 { code, message }
-    // 统一返回 json（调用方自行判断 code）
     return json;
   }
 

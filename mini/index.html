@@ -32,7 +32,15 @@
 <!-- ===== Toast ===== -->
 <div class="toast" id="toast" aria-live="polite"></div>
 
+<div id="version-badge" style="position:fixed;right:12px;bottom:12px;font-size:10px;color:#aaa;z-index:9999;pointer-events:none;font-family:monospace">v?</div>
+
 <script src="../mock/mock-api.js"></script>
 <script src="app.js"></script>
+<script>
+  (function () {
+    var el = document.getElementById('version-badge');
+    if (el && window.APP_VERSION) el.textContent = 'v' + window.APP_VERSION;
+  })();
+</script>
 </body>
 </html>

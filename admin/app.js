@@ -208,35 +208,43 @@
     }
   }
 
-  // ---------- 用户管理 ----------
+  // ---------- 用户管理（农户列表） ----------
   async function renderUsers(container) {
-    container.innerHTML = '<div class="loading-state"><div class="loading-spinner"></div><p>加载用户列表...</p></div>';
+    container.innerHTML = '<div class="loading-state"><div class="loading-spinner"></div><p>加载农户列表...</p></div>';
     try {
-      var res = await MockAPI.getUsers();
-      if (!res.data) { container.innerHTML = '<div class="error-state"><p>加载失败</p><button class="btn btn-outline btn-sm" onclick="renderPage()">重试</button></div>'; return; }
-      var users = res.data;
+      var res = await MockAPI.getFarmers();
+      if (!res.data) {
+        // fallback：使用 getUsers 接口，前端过滤 user_type=2
+        var usersRes = await MockAPI.getUsers();
+        if (!usersRes.data) { container.innerHTML = '<div class="error-state"><p>加载失败</p><button class="btn btn-outline btn-sm" onclick="renderPage()">重试</button></div>'; return; }
+        var farmers = usersRes.data.filter(function (u) { return u.user_type === 2; });
+      } else {
+        var farmers = res.data;
+      }
 
       var html = '<div class="table-section">' +
         '<div class="table-header">' +
-          '<h3>用户列表</h3>' +
+          '<h3>农户列表</h3>' +
           '<div class="table-header-right">' +
-            '<input class="table-search" id="user-search" type="text" placeholder="搜索用户名...">' +
-            '<span class="table-count">共 ' + users.length + ' 人</span>' +
+            '<input class="table-search" id="user-search" type="text" placeholder="搜索姓名/手机号/微信OpenID...">' +
+            '<span class="table-count">共 ' + farmers.length + ' 户</span>' +
           '</div>' +
         '</div>' +
         '<div class="table-wrap"><table>' +
-          '<thead><tr><th>ID</th><th>用户名</th><th>显示名称</th><th>角色</th><th>绑定设备</th><th>状态</th></tr></thead>' +
+          '<thead><tr><th>ID</th><th>姓名</th><th>手机号</th><th>地址</th><th>微信OpenID</th><th>绑定设备</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead>' +
           '<tbody id="user-tbody">' +
-            users.map(function (u) {
-              var roleBadge = u.role === 1 ? 'badge-danger' : u.role === 2 ? 'badge-info' : 'badge-success';
+            farmers.map(function (u) {
               var statusBadge = u.status === 1 ? 'badge-success' : u.status === 2 ? 'badge-warning' : 'badge-muted';
               return '<tr>' +
                 '<td>' + u.user_id + '</td>' +
-                '<td>' + escHtml(u.username) + '</td>' +
                 '<td>' + escHtml(u.display_name) + '</td>' +
-                '<td><span class="badge ' + roleBadge + '">' + escHtml(u.role_label) + '</span></td>' +
-                '<td>' + u.binding_count + ' 台</td>' +
-                '<td><span class="badge ' + statusBadge + '">' + escHtml(u.status_label) + '</span></td>' +
+                '<td>' + escHtml(u.mobile || '--') + '</td>' +
+                '<td>' + escHtml(u.address || '--') + '</td>' +
+                '<td><span style="font-size:11px;word-break:break-all">' + escHtml(u.wechat_openid || '--') + '</span></td>' +
+                '<td>' + (u.binding_count || 0) + ' 台</td>' +
+                '<td><span class="badge ' + statusBadge + '">' + escHtml(u.status_label || '正常') + '</span></td>' +
+                '<td>' + formatTime(u.created_at) + '</td>' +
+                '<td><button class="btn btn-outline btn-sm" onclick="openEditFarmerModal(' + u.user_id + ')">编辑</button></td>' +
               '</tr>';
             }).join('') +
           '</tbody>' +
@@ -245,15 +253,152 @@
 
       container.innerHTML = html;
 
-      // 搜索
+      // 搜索：优先通过后端 keyword 参数搜索，降级为前端过滤
+      var searchTimer = null;
       $('#user-search').oninput = function () {
-        var q = this.value.toLowerCase();
-        $$('#user-tbody tr').forEach(function (tr) {
-          tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
-        });
+        var q = this.value.trim();
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () {
+          if (q) {
+            // 优先使用后端搜索
+            searchFarmers(q);
+          } else {
+            // 空关键词：重新加载全部
+            renderPage();
+          }
+        }, 400);
       };
+
+      // 存储当前 farmer 列表以便搜索降级
+      container._farmers = farmers;
     } catch (e) {
       container.innerHTML = '<div class="error-state"><p>加载失败</p><button class="btn btn-outline btn-sm" onclick="renderPage()">重试</button></div>';
+    }
+  }
+
+  async function searchFarmers(keyword) {
+    var tbody = $('#user-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="9" class="table-empty">搜索中...</td></tr>';
+    try {
+      var res = await MockAPI.getFarmers(keyword);
+      if (res.data && res.data.length > 0) {
+        renderFarmerTableBody(res.data);
+      } else if (res.data && res.data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="table-empty">未找到匹配的农户</td></tr>';
+      } else {
+        // fallback：前端过滤
+        var container = $('#main-content');
+        var farmers = container._farmers || [];
+        var kw = keyword.toLowerCase();
+        var filtered = farmers.filter(function (u) {
+          return (u.display_name && u.display_name.toLowerCase().includes(kw)) ||
+                 (u.mobile && u.mobile.toLowerCase().includes(kw)) ||
+                 (u.wechat_openid && u.wechat_openid.toLowerCase().includes(kw));
+        });
+        renderFarmerTableBody(filtered);
+      }
+    } catch (e) {
+      // 降级前端过滤
+      var container = $('#main-content');
+      var farmers = container._farmers || [];
+      var kw = keyword.toLowerCase();
+      var filtered = farmers.filter(function (u) {
+        return (u.display_name && u.display_name.toLowerCase().includes(kw)) ||
+               (u.mobile && u.mobile.toLowerCase().includes(kw)) ||
+               (u.wechat_openid && u.wechat_openid.toLowerCase().includes(kw));
+      });
+      renderFarmerTableBody(filtered);
+    }
+  }
+
+  function renderFarmerTableBody(farmers) {
+    var tbody = $('#user-tbody');
+    if (!tbody) return;
+    if (farmers.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="9" class="table-empty">未找到匹配的农户</td></tr>';
+      return;
+    }
+    tbody.innerHTML = farmers.map(function (u) {
+      var statusBadge = u.status === 1 ? 'badge-success' : u.status === 2 ? 'badge-warning' : 'badge-muted';
+      return '<tr>' +
+        '<td>' + u.user_id + '</td>' +
+        '<td>' + escHtml(u.display_name) + '</td>' +
+        '<td>' + escHtml(u.mobile || '--') + '</td>' +
+        '<td>' + escHtml(u.address || '--') + '</td>' +
+        '<td><span style="font-size:11px;word-break:break-all">' + escHtml(u.wechat_openid || '--') + '</span></td>' +
+        '<td>' + (u.binding_count || 0) + ' 台</td>' +
+        '<td><span class="badge ' + statusBadge + '">' + escHtml(u.status_label || '正常') + '</span></td>' +
+        '<td>' + formatTime(u.created_at) + '</td>' +
+        '<td><button class="btn btn-outline btn-sm" onclick="openEditFarmerModal(' + u.user_id + ')">编辑</button></td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  // ---------- 编辑农户 Modal ----------
+  function openEditFarmerModal(userId) {
+    var overlay = $('#modal-overlay');
+    overlay.style.display = 'flex';
+    overlay.innerHTML =
+      '<div class="modal">' +
+        '<h3>编辑农户信息</h3>' +
+        '<div class="form-group" style="display:none"><label class="form-label">用户 ID</label><input class="form-input" id="edit-farmer-id" type="number" readonly></div>' +
+        '<div class="form-group"><label class="form-label">姓名</label><input class="form-input" id="edit-farmer-name" placeholder="请输入姓名"></div>' +
+        '<div class="form-group"><label class="form-label">手机号</label><input class="form-input" id="edit-farmer-mobile" placeholder="请输入手机号"></div>' +
+        '<div class="form-group"><label class="form-label">地址</label><input class="form-input" id="edit-farmer-address" placeholder="请输入地址"></div>' +
+        '<div class="form-group"><label class="form-label">备注</label><input class="form-input" id="edit-farmer-remark" placeholder="请输入备注"></div>' +
+        '<div class="form-group"><label class="form-label">状态</label><select class="form-select" id="edit-farmer-status"><option value="1">正常</option><option value="2">已禁用</option></select></div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-outline btn-sm" onclick="closeModal()">取消</button>' +
+          '<button class="btn btn-primary btn-sm" onclick="doUpdateFarmer()">保存</button>' +
+        '</div>' +
+      '</div>';
+
+    // 加载农户详情
+    (async function () {
+      try {
+        var res = await MockAPI.getFarmerDetail(userId);
+        if (res.data) {
+          $('#edit-farmer-id').value = res.data.user_id;
+          $('#edit-farmer-name').value = res.data.display_name || '';
+          $('#edit-farmer-mobile').value = res.data.mobile || '';
+          $('#edit-farmer-address').value = res.data.address || '';
+          $('#edit-farmer-remark').value = res.data.remark || '';
+          $('#edit-farmer-status').value = res.data.status || 1;
+        } else {
+          showToast('加载农户详情失败', 'error');
+        }
+      } catch (e) {
+        showToast('加载农户详情失败', 'error');
+      }
+    })();
+  }
+
+  async function doUpdateFarmer() {
+    var userId = parseInt($('#edit-farmer-id').value);
+    if (!userId) { showToast('用户 ID 无效', 'error'); return; }
+
+    var data = {
+      display_name: $('#edit-farmer-name').value.trim(),
+      mobile: $('#edit-farmer-mobile').value.trim(),
+      address: $('#edit-farmer-address').value.trim(),
+      remark: $('#edit-farmer-remark').value.trim(),
+      status: parseInt($('#edit-farmer-status').value),
+    };
+
+    if (!data.display_name) { showToast('请输入姓名', 'error'); return; }
+
+    try {
+      var res = await MockAPI.updateFarmer(userId, data);
+      if (res.data) {
+        showToast('保存成功', 'success');
+        closeModal();
+        renderPage();
+      } else {
+        showToast(res.message || '保存失败', 'error');
+      }
+    } catch (e) {
+      showToast('操作异常', 'error');
     }
   }
 
@@ -336,6 +481,8 @@
   }
 
   // ---------- 绑定管理 ----------
+  var deviceTreeData = null; // 缓存设备树
+
   async function renderBindings(container) {
     container.innerHTML = '<div class="loading-state"><div class="loading-spinner"></div><p>加载绑定关系...</p></div>';
     try {
@@ -372,35 +519,199 @@
       '</div>';
 
       container.innerHTML = html;
+
+      // 预加载设备树
+      loadDeviceTree();
     } catch (e) {
       container.innerHTML = '<div class="error-state"><p>加载失败</p><button class="btn btn-outline btn-sm" onclick="renderPage()">重试</button></div>';
+    }
+  }
+
+  async function loadDeviceTree() {
+    try {
+      var res = await MockAPI.getDeviceTree();
+      if (res.data) {
+        deviceTreeData = res.data;
+      }
+    } catch (e) {
+      console.warn('加载设备树失败:', e);
     }
   }
 
   function openAddBindingModal() {
     var overlay = $('#modal-overlay');
     overlay.style.display = 'flex';
-    overlay.innerHTML =
-      '<div class="modal">' +
-        '<h3>新增绑定</h3>' +
-        '<div class="form-group"><label class="form-label">农户名称</label><input class="form-input" id="bind-usr-name" placeholder="请输入农户名称" value="新农户"></div>' +
-        '<div class="form-row">' +
-          '<div class="form-group"><label class="form-label">云边设备 ID</label><input class="form-input" id="bind-gateway-id" type="number" placeholder="1" value="1"></div>' +
-          '<div class="form-group"><label class="form-label">用户 ID</label><input class="form-input" id="bind-user-id" type="number" placeholder="3" value="3"></div>' +
+
+    if (!deviceTreeData || deviceTreeData.length === 0) {
+      overlay.innerHTML =
+        '<div class="modal">' +
+          '<h3>新增绑定</h3>' +
+          '<p style="color:var(--color-text-muted);font-size:13px;text-align:center;padding:20px">设备树加载中，请稍后重试...</p>' +
+          '<div class="modal-actions">' +
+            '<button class="btn btn-outline btn-sm" onclick="closeModal()">取消</button>' +
+          '</div>' +
+        '</div>';
+      // 重新加载设备树
+      loadDeviceTree().then(function () { openAddBindingModal(); });
+      return;
+    }
+
+    // 获取已绑定的 point_id 列表
+    var boundPointIds = [];
+    // 通过全局 bindings 数据获取（从 DOM 或重新请求）
+    MockAPI.getBindings().then(function (res) {
+      if (res.data) {
+        boundPointIds = res.data.map(function (b) { return b.point_id; }).filter(Boolean);
+        // 刷新已绑定的标记
+        refreshBindingTreeSelection(boundPointIds);
+      }
+    });
+
+    overlay.innerHTML = buildDeviceTreeModal();
+    overlay._boundPointIds = boundPointIds;
+  }
+
+  function buildDeviceTreeModal() {
+    var html = '<div class="modal" style="width:520px;max-width:95vw">' +
+      '<h3>新增绑定 — 设备树选择</h3>' +
+      '<p style="font-size:12px;color:var(--color-text-muted);margin-bottom:14px">选择采集点与农户进行绑定（灰色项表示已绑定）</p>' +
+      '<div class="form-group">' +
+        '<label class="form-label">农户</label>' +
+        '<select class="form-select" id="bind-farmer-select"><option value="">请选择农户...</option></select>' +
+      '</div>' +
+      '<div class="device-tree" id="device-tree-container" style="max-height:320px;overflow-y:auto;border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:10px">' +
+        '<p style="font-size:12px;color:var(--color-text-muted);text-align:center">加载设备树...</p>' +
+      '</div>' +
+      '<input type="hidden" id="bind-point-id" value="">' +
+      '<div class="modal-actions">' +
+        '<button class="btn btn-outline btn-sm" onclick="closeModal()">取消</button>' +
+        '<button class="btn btn-primary btn-sm" id="btn-confirm-binding" disabled onclick="doAddBinding()">确认绑定</button>' +
+      '</div>' +
+    '</div>';
+
+    // 异步加载农户列表到下拉框
+    setTimeout(async function () {
+      try {
+        var farmersRes = await MockAPI.getFarmers();
+        var farmers = farmersRes.data || [];
+        var select = $('#bind-farmer-select');
+        if (select) {
+          farmers.forEach(function (f) {
+            var opt = document.createElement('option');
+            opt.value = f.user_id;
+            opt.textContent = f.display_name + ' (' + (f.mobile || '--') + ')';
+            select.appendChild(opt);
+          });
+        }
+      } catch (e) {
+        // fallback：使用 getUsers
+        try {
+          var usersRes = await MockAPI.getUsers();
+          var users = (usersRes.data || []).filter(function (u) { return u.user_type === 2; });
+          var select = $('#bind-farmer-select');
+          if (select) {
+            users.forEach(function (u) {
+              var opt = document.createElement('option');
+              opt.value = u.user_id;
+              opt.textContent = u.display_name;
+              select.appendChild(opt);
+            });
+          }
+        } catch (e2) {}
+      }
+    }, 50);
+
+    // 异步渲染设备树
+    setTimeout(function () {
+      renderDeviceTreeInModal();
+    }, 80);
+
+    return html;
+  }
+
+  function renderDeviceTreeInModal(boundPointIds) {
+    var container = $('#device-tree-container');
+    if (!container) return;
+    boundPointIds = boundPointIds || [];
+
+    if (!deviceTreeData || deviceTreeData.length === 0) {
+      container.innerHTML = '<p style="font-size:12px;color:var(--color-text-muted);text-align:center;padding:20px">暂无设备树数据</p>';
+      return;
+    }
+
+    var html = '';
+    deviceTreeData.forEach(function (gw) {
+      var gwOnline = gw.online_status === 1;
+      html += '<div class="tree-gateway" style="margin-bottom:8px">' +
+        '<div class="tree-gateway-header" style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--color-bg);border-radius:var(--radius-sm);cursor:pointer;font-weight:600;font-size:13px" onclick="toggleTreeNode(this)">' +
+          '<span style="font-size:10px;transition:transform 0.2s;display:inline-block" class="tree-arrow">▶</span>' +
+          '<span class="status-dot ' + (gwOnline ? 'status-dot-online' : 'status-dot-offline') + '"></span>' +
+          escHtml(gw.gateway_name) + ' (ID:' + gw.gateway_id + ')' +
         '</div>' +
-        '<div class="form-row">' +
-          '<div class="form-group"><label class="form-label">频点</label><input class="form-input" id="bind-freq" type="number" placeholder="1" value="1"></div>' +
-          '<div class="form-group"><label class="form-label">设备 ID</label><input class="form-input" id="bind-devid" type="number" placeholder="1001" value="1001"></div>' +
-        '</div>' +
-        '<div class="form-row">' +
-          '<div class="form-group"><label class="form-label">功能类型</label><select class="form-select" id="bind-func"><option value="1">温度</option><option value="2">墒情</option><option value="3">限位</option><option value="4">水泵</option><option value="5">风机</option><option value="6">继电器</option></select></div>' +
-          '<div class="form-group"><label class="form-label">棚号</label><input class="form-input" id="bind-shed" placeholder="棚号" value="新棚-01"></div>' +
-        '</div>' +
-        '<div class="modal-actions">' +
-          '<button class="btn btn-outline btn-sm" onclick="closeModal()">取消</button>' +
-          '<button class="btn btn-primary btn-sm" onclick="doAddBinding()">确认绑定</button>' +
-        '</div>' +
-      '</div>';
+        '<div class="tree-children" style="display:none;margin-left:20px;border-left:1px solid var(--color-border);padding-left:10px">';
+
+      (gw.collectors || []).forEach(function (cl) {
+        html += '<div class="tree-collector" style="margin:4px 0">' +
+          '<div class="tree-collector-header" style="display:flex;align-items:center;gap:6px;padding:4px 8px;cursor:pointer;font-size:12px;font-weight:500;color:var(--color-text-secondary)" onclick="toggleTreeNode(this)">' +
+            '<span style="font-size:10px;transition:transform 0.2s;display:inline-block" class="tree-arrow">▶</span>' +
+            escHtml(cl.shed_no) + ' · ' + escHtml(cl.collector_no) +
+          '</div>' +
+          '<div class="tree-children" style="display:none;margin-left:16px;border-left:1px solid var(--color-border);padding-left:8px">';
+
+        (cl.points || []).forEach(function (pt) {
+          var isBound = boundPointIds.indexOf(pt.point_id) >= 0;
+          var boundStyle = isBound ? 'color:var(--color-text-muted);cursor:not-allowed;opacity:0.55' : 'cursor:pointer';
+          html += '<div class="tree-point" data-point-id="' + pt.point_id + '" data-gateway-id="' + gw.gateway_id + '" style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px;margin:2px 0;border-radius:4px;' + boundStyle + '" onclick="' + (isBound ? '' : 'selectBindingPoint(this,' + pt.point_id + ',' + gw.gateway_id + ')') + '">' +
+            '<span style="font-size:12px">' +
+              escHtml(pt.func_name) + ' · 频点' + pt.freq + ' · DevID:' + pt.devid +
+              (pt.unit ? ' (' + escHtml(pt.unit) + ')' : '') +
+            '</span>' +
+            (isBound ? '<span class="badge badge-muted" style="font-size:10px">已绑定</span>' : '') +
+          '</div>';
+        });
+
+        html += '</div></div>';
+      });
+
+      html += '</div></div>';
+    });
+
+    container.innerHTML = html;
+  }
+
+  function refreshBindingTreeSelection(boundPointIds) {
+    var container = $('#device-tree-container');
+    if (!container) return;
+    // 简单重新渲染
+    renderDeviceTreeInModal(boundPointIds);
+  }
+
+  function toggleTreeNode(headerEl) {
+    var arrow = headerEl.querySelector('.tree-arrow');
+    var children = headerEl.parentElement.querySelector('.tree-children');
+    if (children) {
+      var isHidden = children.style.display === 'none';
+      children.style.display = isHidden ? 'block' : 'none';
+      if (arrow) {
+        arrow.style.transform = isHidden ? 'rotate(90deg)' : 'rotate(0deg)';
+      }
+    }
+  }
+
+  function selectBindingPoint(el, pointId, gatewayId) {
+    // 取消之前选中
+    var allPoints = $$('.tree-point');
+    allPoints.forEach(function (p) { p.style.background = ''; p.style.fontWeight = ''; });
+
+    el.style.background = 'var(--color-primary-light)';
+    el.style.fontWeight = '600';
+
+    $('#bind-point-id').value = pointId;
+    // 也存 gateway_id 以备后续使用
+    el.setAttribute('data-selected', 'true');
+
+    var btn = $('#btn-confirm-binding');
+    if (btn) btn.disabled = false;
   }
 
   function closeModal() {
@@ -408,16 +719,46 @@
   }
 
   async function doAddBinding() {
+    var userId = parseInt($('#bind-farmer-select').value);
+    var pointId = parseInt($('#bind-point-id').value);
+
+    if (!userId) { showToast('请选择农户', 'error'); return; }
+    if (!pointId) { showToast('请选择一个采集点', 'error'); return; }
+
+    // 从设备树中查找 point 详细信息
+    var pointInfo = null;
+    if (deviceTreeData) {
+      for (var gi = 0; gi < deviceTreeData.length; gi++) {
+        var gw = deviceTreeData[gi];
+        for (var ci = 0; ci < (gw.collectors || []).length; ci++) {
+          var cl = gw.collectors[ci];
+          for (var pi = 0; pi < (cl.points || []).length; pi++) {
+            if (cl.points[pi].point_id === pointId) {
+              pointInfo = cl.points[pi];
+              pointInfo._gateway_id = gw.gateway_id;
+              pointInfo._gateway_name = gw.gateway_name;
+              pointInfo._shed_no = cl.shed_no;
+              break;
+            }
+          }
+          if (pointInfo) break;
+        }
+        if (pointInfo) break;
+      }
+    }
+
     var data = {
-      bind_usr_name: $('#bind-usr-name').value.trim(),
-      gateway_id: parseInt($('#bind-gateway-id').value) || 1,
-      user_id: parseInt($('#bind-user-id').value) || 3,
-      freq: parseInt($('#bind-freq').value) || 1,
-      devid: parseInt($('#bind-devid').value) || 1001,
-      func: parseInt($('#bind-func').value) || 1,
-      shed_no: $('#bind-shed').value.trim(),
+      user_id: userId,
+      point_id: pointId,
     };
-    if (!data.bind_usr_name) { showToast('请输入农户名称', 'error'); return; }
+
+    if (pointInfo) {
+      data.gateway_id = pointInfo._gateway_id;
+      data.shed_no = pointInfo._shed_no;
+      data.freq = pointInfo.freq;
+      data.devid = pointInfo.devid;
+      data.func = pointInfo.func;
+    }
 
     try {
       var res = await MockAPI.addBinding(data);
@@ -547,5 +888,9 @@
   window.openAddBindingModal = openAddBindingModal;
   window.closeModal = closeModal;
   window.doAddBinding = doAddBinding;
+  window.openEditFarmerModal = openEditFarmerModal;
+  window.doUpdateFarmer = doUpdateFarmer;
+  window.toggleTreeNode = toggleTreeNode;
+  window.selectBindingPoint = selectBindingPoint;
 
 })();

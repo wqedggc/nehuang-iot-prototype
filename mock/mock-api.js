@@ -23,7 +23,7 @@
   // 运行模式：
   //   'mock'  — 纯本地 mock，不请求网络（推荐开发时使用）
   //   'real'  — 请求真实后端，失败则自动 fallback mock（部署后使用）
-  const MODE = 'mock'; // ← 开发时用 'mock'，后端就绪后改为 'real'
+  const MODE = 'real'; // ← 已对接真实后端
   const API_BASE = 'http://43.143.208.153:8080'; // 真实后端地址
   const MOCK_DELAY = 100; // mock 模拟网络延迟（ms）
 
@@ -103,16 +103,68 @@
   const MOCK_COLLECTORS = generateCollectors();
 
   const MOCK_BINDINGS = [
-    { bind_id: 1, user_id: 3, gateway_id: 1, shed_no: '棚1-01', freq: 1, devid: 1001, func: 1, bind_usr_name: '张三农场' },
-    { bind_id: 2, user_id: 3, gateway_id: 1, shed_no: '棚1-02', freq: 2, devid: 1002, func: 2, bind_usr_name: '张三农场' },
-    { bind_id: 3, user_id: 3, gateway_id: 1, shed_no: '棚1-03', freq: 3, devid: 1003, func: 3, bind_usr_name: '张三农场' },
-    { bind_id: 4, user_id: 3, gateway_id: 2, shed_no: '棚2-01', freq: 1, devid: 1004, func: 4, bind_usr_name: '张三农场' },
-    { bind_id: 5, user_id: 4, gateway_id: 1, shed_no: '棚1-04', freq: 4, devid: 1005, func: 5, bind_usr_name: '李四果园' },
-    { bind_id: 6, user_id: 4, gateway_id: 1, shed_no: '棚1-05', freq: 5, devid: 1006, func: 6, bind_usr_name: '李四果园' },
-    { bind_id: 7, user_id: 5, gateway_id: 2, shed_no: '棚2-02', freq: 2, devid: 1007, func: 1, bind_usr_name: '王五蔬菜基地' },
-    { bind_id: 8, user_id: 5, gateway_id: 2, shed_no: '棚2-03', freq: 3, devid: 1008, func: 2, bind_usr_name: '王五蔬菜基地' },
-    { bind_id: 9, user_id: 5, gateway_id: 2, shed_no: '棚2-04', freq: 4, devid: 1009, func: 3, bind_usr_name: '王五蔬菜基地' },
+    { bind_id: 1, user_id: 3, gateway_id: 1, shed_no: '棚1-01', freq: 1, devid: 1001, func: 1, bind_usr_name: '张三农场', point_id: 1 },
+    { bind_id: 2, user_id: 3, gateway_id: 1, shed_no: '棚1-02', freq: 2, devid: 1002, func: 2, bind_usr_name: '张三农场', point_id: 2 },
+    { bind_id: 3, user_id: 3, gateway_id: 1, shed_no: '棚1-03', freq: 3, devid: 1003, func: 3, bind_usr_name: '张三农场', point_id: 3 },
+    { bind_id: 4, user_id: 3, gateway_id: 2, shed_no: '棚2-01', freq: 1, devid: 1004, func: 4, bind_usr_name: '张三农场', point_id: 4 },
+    { bind_id: 5, user_id: 4, gateway_id: 1, shed_no: '棚1-04', freq: 4, devid: 1005, func: 5, bind_usr_name: '李四果园', point_id: 5 },
+    { bind_id: 6, user_id: 4, gateway_id: 1, shed_no: '棚1-05', freq: 5, devid: 1006, func: 6, bind_usr_name: '李四果园', point_id: 6 },
+    { bind_id: 7, user_id: 5, gateway_id: 2, shed_no: '棚2-02', freq: 2, devid: 1007, func: 1, bind_usr_name: '王五蔬菜基地', point_id: 7 },
+    { bind_id: 8, user_id: 5, gateway_id: 2, shed_no: '棚2-03', freq: 3, devid: 1008, func: 2, bind_usr_name: '王五蔬菜基地', point_id: 8 },
+    { bind_id: 9, user_id: 5, gateway_id: 2, shed_no: '棚2-04', freq: 4, devid: 1009, func: 3, bind_usr_name: '王五蔬菜基地', point_id: 9 },
   ];
+
+  // 扩展农户 mock 数据（包含 address, mobile, wechat_openid, remark, created_at）
+  const MOCK_FARMERS = [
+    { user_id: 3, user_type: 2, role: 3, username: 'farmer_zhang', display_name: '张三农场', mobile: '13800001111', address: '山东省潍坊市寿光市大棚区A-01', wechat_openid: 'wx_openid_zhang_001', remark: '寿光蔬菜大棚种植户', status: 1, status_label: '正常', binding_count: 4, created_at: '2026-03-15T10:30:00Z' },
+    { user_id: 4, user_type: 2, role: 3, username: 'farmer_li', display_name: '李四果园', mobile: '13800002222', address: '山东省烟台市栖霞市果园路8号', wechat_openid: 'wx_openid_li_002', remark: '苹果种植大户', status: 1, status_label: '正常', binding_count: 2, created_at: '2026-04-20T14:00:00Z' },
+    { user_id: 5, user_type: 2, role: 3, username: 'farmer_wang', display_name: '王五蔬菜基地', mobile: '13800003333', address: '山东省临沂市兰陵县蔬菜基地B-03', wechat_openid: 'wx_openid_wang_003', remark: '大棚蔬菜合作社', status: 1, status_label: '正常', binding_count: 3, created_at: '2026-05-10T08:15:00Z' },
+    { user_id: 6, user_type: 2, role: 3, username: 'farmer_zhao', display_name: '赵六水产', mobile: '13800004444', address: '江苏省连云港市赣榆区水产养殖场', wechat_openid: 'wx_openid_zhao_004', remark: '水产养殖户', status: 2, status_label: '已禁用', binding_count: 0, created_at: '2026-06-01T16:45:00Z' },
+  ];
+
+  // 设备树 mock 数据
+  function generateDeviceTree() {
+    const funcTypes = [
+      { func: 1, name: '温度', unit: '℃' },
+      { func: 2, name: '墒情', unit: '%' },
+      { func: 3, name: '限位', unit: '' },
+      { func: 4, name: '水泵', unit: '' },
+      { func: 5, name: '风机', unit: '' },
+      { func: 6, name: '继电器', unit: '' },
+    ];
+    const tree = [];
+    MOCK_GATEWAYS.forEach((gw, gi) => {
+      const collectors = [];
+      const count = 3 + Math.floor(Math.random() * 4);
+      for (let ci = 0; ci < count; ci++) {
+        const ft = funcTypes[ci % funcTypes.length];
+        const points = [{
+          point_id: gi * 100 + ci * 10 + 1,
+          freq: ci + 1,
+          devid: 1000 + gi * 10 + ci + 1,
+          func: ft.func,
+          func_name: ft.name,
+          unit: ft.unit,
+          shed_no: '棚' + (gi + 1) + '-' + (ci + 1).toString().padStart(2, '0'),
+        }];
+        collectors.push({
+          collector_id: gi * 10 + ci + 1,
+          collector_no: 'DEV-' + (gi * 10 + ci + 1).toString().padStart(4, '0'),
+          shed_no: '棚' + (gi + 1) + '-' + (ci + 1).toString().padStart(2, '0'),
+          points: points,
+        });
+      }
+      tree.push({
+        gateway_id: gw.gateway_id,
+        gateway_name: gw.gateway_name,
+        gateway_external_id: gw.gateway_external_id,
+        online_status: gw.online_status,
+        collectors: collectors,
+      });
+    });
+    return tree;
+  }
+  const MOCK_DEVICE_TREE = generateDeviceTree();
 
   function generateControlLogs() {
     const ops = ['开启', '停止', '关闭'];
@@ -291,6 +343,46 @@
     'GET /api/v1/admin/control-logs': function () {
       return { data: MOCK_CONTROL_LOGS };
     },
+    // ---- 农户接口 ----
+    'GET /api/v1/admin/farmers': function (params, query) {
+      let farmers = [...MOCK_FARMERS];
+      // 关键词搜索
+      if (query && query.keyword) {
+        const kw = query.keyword.toLowerCase();
+        farmers = farmers.filter(f =>
+          f.display_name.toLowerCase().includes(kw) ||
+          f.mobile.toLowerCase().includes(kw) ||
+          f.wechat_openid.toLowerCase().includes(kw)
+        );
+      }
+      return { data: farmers };
+    },
+    'GET /api/v1/admin/farmers/:id': function (params) {
+      const farmer = MOCK_FARMERS.find(f => f.user_id === parseInt(params.id));
+      return farmer ? { data: farmer } : { code: 404, message: 'farmer not found' };
+    },
+    'PATCH /api/v1/admin/farmers/:id': function (params, body) {
+      const idx = MOCK_FARMERS.findIndex(f => f.user_id === parseInt(params.id));
+      if (idx < 0) return { code: 404, message: 'farmer not found' };
+      const allowed = ['display_name', 'mobile', 'address', 'remark', 'status'];
+      allowed.forEach(k => { if (body[k] !== undefined) MOCK_FARMERS[idx][k] = body[k]; });
+      if (body.status !== undefined) {
+        MOCK_FARMERS[idx].status_label = { 1: '正常', 2: '已禁用', 3: '已删除' }[body.status] || '';
+      }
+      return { data: MOCK_FARMERS[idx] };
+    },
+    'GET /api/v1/admin/farmers/:id/bindings': function (params) {
+      const uid = parseInt(params.id);
+      const bindings = MOCK_BINDINGS.filter(b => b.user_id === uid);
+      return { data: bindings.map(b => {
+        const c = MOCK_COLLECTORS.find(x => x.gateway_id === b.gateway_id && x.freq === b.freq && x.devid === b.devid);
+        return { ...b, collector: c || null };
+      }) };
+    },
+    // ---- 设备树 ----
+    'GET /api/v1/admin/device-tree': function () {
+      return { data: MOCK_DEVICE_TREE };
+    },
   };
 
   // ============================================================
@@ -441,6 +533,7 @@
   global.MockAPI = {
     get: function (path) { return request('GET', path); },
     post: function (path, body) { return request('POST', path, body); },
+    patch: function (path, body) { return request('PATCH', path, body); },
     delete: function (path) { return request('DELETE', path); },
 
     setUserId: setCurrentUserId,
@@ -504,6 +597,30 @@
 
     getControlLogs: async function () {
       return request('GET', '/api/v1/admin/control-logs');
+    },
+
+    // ---- 农户管理 ----
+    getFarmers: async function (keyword) {
+      var path = '/api/v1/admin/farmers';
+      if (keyword) path += '?keyword=' + encodeURIComponent(keyword);
+      return request('GET', path);
+    },
+
+    getFarmerDetail: async function (userId) {
+      return request('GET', '/api/v1/admin/farmers/' + userId);
+    },
+
+    updateFarmer: async function (userId, data) {
+      return request('PATCH', '/api/v1/admin/farmers/' + userId, data);
+    },
+
+    getFarmerBindings: async function (userId) {
+      return request('GET', '/api/v1/admin/farmers/' + userId + '/bindings');
+    },
+
+    // ---- 设备树 ----
+    getDeviceTree: async function () {
+      return request('GET', '/api/v1/admin/device-tree');
     },
   };
 

@@ -156,11 +156,24 @@
     container.innerHTML = '<div class="loading-state"><div class="loading-spinner"></div><p>加载设备列表...</p></div>';
 
     try {
+      // 确认 JWT 存在
+      var token = localStorage.getItem('token');
+      if (!token) {
+        container.innerHTML = '<div class="empty-state">' +
+          '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 15v2m0-8v4m0 0a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/></svg>' +
+          '<p>请先登录</p><button class="btn btn-outline btn-sm" onclick="navigate(\'login\')" style="margin-top:12px">去登录</button></div>';
+        return;
+      }
+
       var res = await MockAPI.getDevices();
+
+      // 处理空绑定状态
       if (!res.data || res.data.length === 0) {
         container.innerHTML = '<div class="empty-state">' +
           '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>' +
-          '<p>暂无绑定设备</p></div>';
+          '<p>暂无绑定设备</p>' +
+          '<p style="font-size:12px;color:var(--color-text-muted);margin-top:4px">请联系管理员为您绑定设备</p>' +
+        '</div>';
         return;
       }
 
@@ -189,9 +202,14 @@
         '</div>';
       });
       html += '</div>';
+
+      // 添加底部提示
+      html += '<p style="text-align:center;margin-top:16px;font-size:11px;color:var(--color-text-muted)">下拉刷新可获取最新数据</p>';
+
       container.innerHTML = html;
     } catch (e) {
-      container.innerHTML = '<div class="error-state"><p>加载失败</p><button class="btn btn-outline btn-sm" onclick="renderPage()">重试</button></div>';
+      console.error('[C端] 设备列表加载失败:', e);
+      container.innerHTML = '<div class="error-state"><p>加载失败：' + escHtml(e.message || '网络异常') + '</p><button class="btn btn-outline btn-sm" onclick="renderPage()">重试</button></div>';
     }
   }
 

@@ -487,15 +487,131 @@
       var u = res.data;
       currentUser = u;
 
-      var html = '<div class="settings-section">' +
-        '<div class="settings-item"><span class="settings-item-label">用户名</span><span class="settings-item-value">' + escHtml(u.display_name) + '</span></div>' +
+      var html = '';
+
+      // ── 我的资料卡片 ──
+      html += '<div class="settings-section">' +
+        '<h3 style="margin:0 0 12px 0;font-size:16px;font-weight:600">我的资料</h3>' +
+        '<div class="settings-item"><span class="settings-item-label">名称</span><span class="settings-item-value" id="profile-display-name">' + escHtml(u.display_name) + '</span></div>' +
+        '<div class="settings-item"><span class="settings-item-label">手机号</span><span class="settings-item-value" id="profile-mobile">' + escHtml(u.mobile) + '</span></div>' +
+        '<div class="settings-item"><span class="settings-item-label">地址</span><span class="settings-item-value" id="profile-address">' + escHtml(u.address) + '</span></div>' +
+        '<div class="settings-item"><span class="settings-item-label">备注</span><span class="settings-item-value" id="profile-remark">' + escHtml(u.remark) + '</span></div>' +
+        '<div class="settings-item"><span class="settings-item-label">角色</span><span class="settings-item-value">' + (u.role === 3 ? '农户' : '其他') + '</span></div>' +
         '<div class="settings-item"><span class="settings-item-label">已绑定设备</span><span class="settings-item-value">' + u.binding_count + ' 台</span></div>' +
-      '</div>' +
-      '<div class="settings-section">' +
+        '<button class="btn btn-outline btn-block" id="btn-edit-profile" style="margin-top:12px">编辑资料</button>' +
+      '</div>';
+
+      // ── 编辑表单（默认隐藏）──
+      html += '<div class="settings-section" id="profile-edit-form" style="display:none">' +
+        '<h3 style="margin:0 0 12px 0;font-size:16px;font-weight:600">编辑资料</h3>' +
+        '<div class="form-group">' +
+          '<label class="form-label">名称</label>' +
+          '<input class="form-input" id="edit-display-name" type="text" placeholder="请输入名称" maxlength="64" value="' + escHtml(u.display_name) + '">' +
+          '<p class="form-hint">1-64 个字符</p>' +
+        '</div>' +
+        '<div class="form-group">' +
+          '<label class="form-label">手机号</label>' +
+          '<input class="form-input" id="edit-mobile" type="text" placeholder="请输入手机号" maxlength="512" value="' + escHtml(u.mobile) + '">' +
+        '</div>' +
+        '<div class="form-group">' +
+          '<label class="form-label">地址</label>' +
+          '<input class="form-input" id="edit-address" type="text" placeholder="请输入地址" maxlength="512" value="' + escHtml(u.address) + '">' +
+        '</div>' +
+        '<div class="form-group">' +
+          '<label class="form-label">备注</label>' +
+          '<input class="form-input" id="edit-remark" type="text" placeholder="请输入备注" maxlength="512" value="' + escHtml(u.remark) + '">' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:12px">' +
+          '<button class="btn btn-primary" id="btn-save-profile" style="flex:1">保存</button>' +
+          '<button class="btn btn-outline" id="btn-cancel-edit" style="flex:1">取消</button>' +
+        '</div>' +
+        '<p class="form-hint" id="profile-edit-error" style="color:var(--color-danger);display:none"></p>' +
+      '</div>';
+
+      // ── 退出登录 ──
+      html += '<div class="settings-section">' +
         '<div class="settings-item"><span class="settings-item-danger" onclick="doLogout()">退出登录</span></div>' +
       '</div>';
 
       container.innerHTML = html;
+
+      // 绑定编辑/保存/取消事件
+      $('#btn-edit-profile').onclick = function () {
+        $('#profile-edit-form').style.display = '';
+        this.style.display = 'none';
+      };
+
+      $('#btn-cancel-edit').onclick = function () {
+        $('#profile-edit-form').style.display = 'none';
+        $('#btn-edit-profile').style.display = '';
+        var errEl = $('#profile-edit-error');
+        errEl.style.display = 'none';
+        errEl.textContent = '';
+        // 恢复原始值
+        $('#edit-display-name').value = u.display_name || '';
+        $('#edit-mobile').value = u.mobile || '';
+        $('#edit-address').value = u.address || '';
+        $('#edit-remark').value = u.remark || '';
+      };
+
+      $('#btn-save-profile').onclick = async function () {
+        var displayName = $('#edit-display-name').value.trim();
+        var mobile = $('#edit-mobile').value.trim();
+        var address = $('#edit-address').value.trim();
+        var remark = $('#edit-remark').value.trim();
+
+        // 前端校验
+        if (!displayName || displayName.length < 1 || displayName.length > 64) {
+          showToast('名称需要 1-64 个字符', 'error');
+          return;
+        }
+        if (mobile.length > 512) { showToast('手机号最多 512 个字符', 'error'); return; }
+        if (address.length > 512) { showToast('地址最多 512 个字符', 'error'); return; }
+        if (remark.length > 512) { showToast('备注最多 512 个字符', 'error'); return; }
+
+        var btn = $('#btn-save-profile');
+        btn.disabled = true;
+        btn.textContent = '保存中...';
+
+        try {
+          var saveRes = await MockAPI.updateMyProfile({
+            display_name: displayName,
+            mobile: mobile,
+            address: address,
+            remark: remark,
+          });
+
+          if (saveRes.data) {
+            // 更新本地缓存
+            u.display_name = saveRes.data.display_name;
+            u.mobile = saveRes.data.mobile;
+            u.address = saveRes.data.address;
+            u.remark = saveRes.data.remark;
+
+            // 更新卡片展示
+            $('#profile-display-name').textContent = saveRes.data.display_name || '';
+            $('#profile-mobile').textContent = saveRes.data.mobile || '';
+            $('#profile-address').textContent = saveRes.data.address || '';
+            $('#profile-remark').textContent = saveRes.data.remark || '';
+
+            // 隐藏编辑表单
+            $('#profile-edit-form').style.display = 'none';
+            $('#btn-edit-profile').style.display = '';
+
+            showToast('资料已更新', 'success');
+          } else {
+            var errEl = $('#profile-edit-error');
+            errEl.textContent = saveRes.message || '保存失败';
+            errEl.style.display = '';
+            showToast(saveRes.message || '保存失败', 'error');
+          }
+        } catch (e) {
+          showToast('网络异常，请重试', 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = '保存';
+        }
+      };
     } catch (e) {
       container.innerHTML = '<div class="error-state"><p>加载失败</p><button class="btn btn-outline btn-sm" onclick="renderPage()">重试</button></div>';
     }

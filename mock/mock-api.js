@@ -133,14 +133,14 @@
 
   const MOCK_BINDINGS = [
     { bind_id: 1, user_id: 3, gateway_id: 1, shed_no: '棚1-01', freq: 1, devid: 1001, func: 1, bind_usr_name: '张三农场', point_id: 1 },
-    { bind_id: 2, user_id: 3, gateway_id: 1, shed_no: '棚1-02', freq: 2, devid: 1002, func: 2, bind_usr_name: '张三农场', point_id: 2 },
-    { bind_id: 3, user_id: 3, gateway_id: 1, shed_no: '棚1-03', freq: 3, devid: 1003, func: 3, bind_usr_name: '张三农场', point_id: 3 },
-    { bind_id: 4, user_id: 3, gateway_id: 2, shed_no: '棚2-01', freq: 1, devid: 1004, func: 4, bind_usr_name: '张三农场', point_id: 4 },
-    { bind_id: 5, user_id: 4, gateway_id: 1, shed_no: '棚1-04', freq: 4, devid: 1005, func: 5, bind_usr_name: '李四果园', point_id: 5 },
-    { bind_id: 6, user_id: 4, gateway_id: 1, shed_no: '棚1-05', freq: 5, devid: 1006, func: 6, bind_usr_name: '李四果园', point_id: 6 },
-    { bind_id: 7, user_id: 5, gateway_id: 2, shed_no: '棚2-02', freq: 2, devid: 1007, func: 1, bind_usr_name: '王五蔬菜基地', point_id: 7 },
-    { bind_id: 8, user_id: 5, gateway_id: 2, shed_no: '棚2-03', freq: 3, devid: 1008, func: 2, bind_usr_name: '王五蔬菜基地', point_id: 8 },
-    { bind_id: 9, user_id: 5, gateway_id: 2, shed_no: '棚2-04', freq: 4, devid: 1009, func: 3, bind_usr_name: '王五蔬菜基地', point_id: 9 },
+    { bind_id: 2, user_id: 3, gateway_id: 1, shed_no: '棚1-02', freq: 2, devid: 1002, func: 2, bind_usr_name: '张三农场', point_id: 11 },
+    { bind_id: 3, user_id: 3, gateway_id: 1, shed_no: '棚1-03', freq: 3, devid: 1003, func: 3, bind_usr_name: '张三农场', point_id: 21 },
+    { bind_id: 4, user_id: 3, gateway_id: 2, shed_no: '棚2-01', freq: 1, devid: 1011, func: 4, bind_usr_name: '张三农场', point_id: 101 },
+    { bind_id: 5, user_id: 4, gateway_id: 1, shed_no: '棚1-04', freq: 4, devid: 1004, func: 5, bind_usr_name: '李四果园', point_id: 31 },
+    { bind_id: 6, user_id: 4, gateway_id: 1, shed_no: '棚1-05', freq: 5, devid: 1005, func: 6, bind_usr_name: '李四果园', point_id: 41 },
+    { bind_id: 7, user_id: 5, gateway_id: 2, shed_no: '棚2-02', freq: 2, devid: 1012, func: 1, bind_usr_name: '王五蔬菜基地', point_id: 111 },
+    { bind_id: 8, user_id: 5, gateway_id: 2, shed_no: '棚2-03', freq: 3, devid: 1013, func: 2, bind_usr_name: '王五蔬菜基地', point_id: 121 },
+    { bind_id: 9, user_id: 5, gateway_id: 2, shed_no: '棚2-04', freq: 4, devid: 1014, func: 3, bind_usr_name: '王五蔬菜基地', point_id: 201 },
   ];
 
   // 扩展农户 mock 数据（包含 address, mobile, wechat_openid, remark, created_at）
@@ -169,6 +169,10 @@
         const ft = funcTypes[ci % funcTypes.length];
         const points = [{
           point_id: gi * 100 + ci * 10 + 1,
+          point_name: ft.name + '传感器',
+          display_name: ft.name + '传感器',
+          function_type: ft.func,
+          channel_no: 1,
           freq: ci + 1,
           devid: 1000 + gi * 10 + ci + 1,
           func: ft.func,
@@ -179,6 +183,9 @@
         collectors.push({
           collector_id: gi * 10 + ci + 1,
           collector_no: 'DEV-' + (gi * 10 + ci + 1).toString().padStart(4, '0'),
+          node_id: gi * 10 + ci + 1,
+          frequency: ci + 1,
+          device_external_id: 'DEV-' + (gi * 10 + ci + 1).toString().padStart(4, '0'),
           shed_no: '棚' + (gi + 1) + '-' + (ci + 1).toString().padStart(2, '0'),
           points: points,
         });
@@ -276,7 +283,33 @@
       const uid = getCurrentUserId();
       const user = MOCK_USERS.find(u => u.user_id === uid) || MOCK_USERS[2];
       const bindingCount = MOCK_BINDINGS.filter(b => b.user_id === uid).length;
-      return { data: { user_id: user.user_id, display_name: user.display_name, role: user.role, binding_count: bindingCount } };
+      // 尝试从 MOCK_FARMERS 中获取更完整的资料
+      const farmer = MOCK_FARMERS.find(f => f.user_id === uid);
+      const mobile = farmer ? farmer.mobile : '';
+      const address = farmer ? farmer.address : '';
+      const remark = farmer ? farmer.remark : '';
+      return { data: { user_id: user.user_id, display_name: user.display_name, mobile: mobile, address: address, remark: remark, role: user.role, binding_count: bindingCount } };
+    },
+    'PATCH /api/v1/mini/me': function (params, body) {
+      const uid = getCurrentUserId();
+      const farmerIdx = MOCK_FARMERS.findIndex(f => f.user_id === uid);
+      if (farmerIdx < 0) return { code: 404, message: 'user not found' };
+
+      const allowed = ['display_name', 'mobile', 'address', 'remark'];
+      allowed.forEach(k => {
+        if (body[k] !== undefined && body[k] !== null && body[k] !== '') {
+          MOCK_FARMERS[farmerIdx][k] = body[k];
+        }
+      });
+
+      // 同步更新 MOCK_USERS 中的 display_name
+      const userIdx = MOCK_USERS.findIndex(u => u.user_id === uid);
+      if (userIdx >= 0 && body.display_name) {
+        MOCK_USERS[userIdx].display_name = body.display_name;
+      }
+
+      const f = MOCK_FARMERS[farmerIdx];
+      return { data: { user_id: f.user_id, display_name: f.display_name, mobile: f.mobile, address: f.address, remark: f.remark, role: f.role } };
     },
     'GET /api/v1/mini/devices': function () {
       const uid = getCurrentUserId();
@@ -358,10 +391,55 @@
         return { ...b, collector: c || null };
       }) };
     },
-    'POST /api/v1/admin/bindings': function (body) {
-      const nb = { bind_id: nextBindId++, user_id: body.user_id, gateway_id: body.gateway_id, shed_no: body.shed_no || '', freq: body.freq, devid: body.devid, func: body.func, bind_usr_name: body.bind_usr_name || '' };
+    'POST /api/v1/admin/bindings': function (params, body) {
+      var userId = String(body.user_id);
+      var pointId = String(body.point_id);
+
+      // 冲突检测
+      var existing = MOCK_BINDINGS.find(function (b) {
+        return String(b.point_id) === pointId;
+      });
+      if (existing) {
+        return {
+          code: 409,
+          message: 'device point already bound to another user',
+          data: {
+            existing_user_id: String(existing.user_id),
+            existing_bind_id: String(existing.bind_id),
+            existing_user_name: existing.bind_user_name || existing.bind_usr_name || ''
+          }
+        };
+      }
+
+      // 从 MOCK_DEVICE_TREE 查找 point 信息补全字段
+      var gwId = 0, freq = 0, devId = '', shedNo = '', funcType = 0;
+      MOCK_DEVICE_TREE.forEach(function (gw) {
+        (gw.collectors || []).forEach(function (cl) {
+          (cl.points || []).forEach(function (pt) {
+            if (String(pt.point_id) === pointId) {
+              gwId = gw.gateway_id;
+              freq = cl.frequency;
+              devId = cl.device_external_id;
+              shedNo = pt.shed_no || cl.shed_no || '';
+              funcType = pt.function_type;
+            }
+          });
+        });
+      });
+
+      var nb = {
+        bind_id: nextBindId++,
+        user_id: parseInt(userId),
+        point_id: parseInt(pointId),
+        gateway_id: gwId,
+        shed_no: shedNo,
+        freq: freq,
+        devid: devId,
+        func: funcType,
+        bind_usr_name: ''
+      };
       MOCK_BINDINGS.push(nb);
-      return { data: nb };
+      return { code: 0, data: { bind_id: String(nb.bind_id), user_id: userId, point_id: pointId, created_at: new Date().toISOString() } };
     },
     'DELETE /api/v1/admin/bindings/:id': function (params) {
       const idx = MOCK_BINDINGS.findIndex(b => b.bind_id === parseInt(params.id));
@@ -409,6 +487,55 @@
       }) };
     },
     // ---- 设备树 ----
+    'GET /api/v1/admin/device-points': function (params, query) {
+      var keyword = (query.keyword || '').toLowerCase();
+      var bindStatus = query.bind_status || '';
+      var results = [];
+      var funcNames = { 1: '温度', 2: '墒情', 3: '限位', 4: '水泵', 5: '风机', 6: '继电器' };
+
+      MOCK_DEVICE_TREE.forEach(function (gw) {
+        (gw.collectors || []).forEach(function (cl) {
+          (cl.points || []).forEach(function (pt) {
+            // 判断是否已绑定
+            var boundBinding = MOCK_BINDINGS.find(function (b) {
+              return String(b.point_id) === String(pt.point_id);
+            });
+
+            var pointName = pt.display_name || pt.point_name || (funcNames[pt.function_type] + '传感器');
+            var shedNo = pt.shed_no || cl.shed_no || '';
+            var searchStr = (pointName + ' ' + gw.gateway_name + ' ' + cl.frequency + ' ' + cl.device_external_id + ' ' + shedNo + ' ' + funcNames[pt.function_type]).toLowerCase();
+
+            if (keyword && searchStr.indexOf(keyword) === -1) return;
+
+            var isBound = !!boundBinding;
+
+            // bind_status 过滤
+            if (bindStatus === 'unbound' && isBound) return;
+            if (bindStatus === 'bound' && !isBound) return;
+
+            results.push({
+              point_id: String(pt.point_id),
+              gateway_id: String(gw.gateway_id),
+              gateway_name: gw.gateway_name,
+              node_id: String(cl.node_id || ''),
+              frequency: cl.frequency,
+              device_external_id: cl.device_external_id,
+              function_type: pt.function_type,
+              function_name: funcNames[pt.function_type] || '未知',
+              channel_no: pt.channel_no || 1,
+              point_name: pointName,
+              unit: pt.unit || '',
+              shed_no: shedNo,
+              is_bound: isBound,
+              bind_user_id: boundBinding ? String(boundBinding.user_id) : null,
+              bind_user_name: boundBinding ? (boundBinding.bind_user_name || boundBinding.bind_usr_name || '') : ''
+            });
+          });
+        });
+      });
+
+      return { code: 0, data: results };
+    },
     'GET /api/v1/admin/device-tree': function () {
       return { data: MOCK_DEVICE_TREE };
     },
@@ -479,7 +606,7 @@
       const realResult = await realRequest(method, cleanPath, query, body);
       return realResult;
     } catch (e) {
-      // admin 接口的 401/403 错误已经在 realRequest 中直接抛出，
+      // admin 接口的 401/403 和 mini 接口的 401/403 已在 realRequest 中直接抛出，
       // 不会走到这里。走到这里的只有网络/超时/404 等错误。
       console.warn('[API] 真实后端请求失败，fallback 到 mock:', method, cleanPath, e.message);
       return mockRequest(method, cleanPath, query, body);
@@ -539,6 +666,12 @@
       throw new Error('认证失败，请重新登录');
     }
 
+    // ─── Mini 接口 403：权限不足（如 admin token 访问 mini 接口），不 fallback mock ───
+    if (res.status === 403 && (cleanPath.indexOf('/api/v1/mini/') === 0 || cleanPath === '/api/v1/mini')) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.message || '权限不足（403）');
+    }
+
     // 404：后端未实现该接口，fallback mock
     if (res.status === 404) {
       throw new Error('接口未实现 (404)');
@@ -596,6 +729,10 @@
 
     getMe: async function (type) {
       return request('GET', '/api/v1/' + type + '/me');
+    },
+
+    updateMyProfile: async function (data) {
+      return request('PATCH', '/api/v1/mini/me', data);
     },
 
     getDevices: async function () {
@@ -669,6 +806,15 @@
     // ---- 设备树 ----
     getDeviceTree: async function () {
       return request('GET', '/api/v1/admin/device-tree');
+    },
+
+    searchDevicePoints: async function (keyword, bindStatus) {
+      var path = '/api/v1/admin/device-points';
+      var params = [];
+      if (keyword) params.push('keyword=' + encodeURIComponent(keyword));
+      if (bindStatus) params.push('bind_status=' + encodeURIComponent(bindStatus));
+      if (params.length) path += '?' + params.join('&');
+      return request('GET', path);
     },
   };
 

@@ -128,8 +128,12 @@
     passwordInput.value = 'admin123';
 
     $('#login-submit').onclick = function () {
-      var username = usernameInput.value.trim();
-      var password = passwordInput.value.trim();
+      // 每次点击时重新从 DOM 获取值（避免 Safari 引用丢失问题）
+      var username = ($('#login-username') || {}).value || '';
+      var password = ($('#login-password') || {}).value || '';
+      username = (username || '').trim();
+      password = (password || '').trim();
+      console.debug('[Login] username=', username, 'password_len=', password.length);
       if (!username || !password) { showToast('请输入用户名和密码', 'error'); return; }
       doAdminLogin(username, password);
     };
@@ -505,6 +509,11 @@
   }
   setInterval(updateClock, 1000);
   updateClock();
+
+  // 版本号（控制台 + 页脚）
+  console.info('%c涅凰智农 IoT v' + (window.APP_VERSION_STRING || '?'), 'color:#2ecc71;font-weight:bold');
+  var versionEl = document.getElementById('app-version');
+  if (versionEl) versionEl.textContent = 'v' + (window.APP_VERSION || '?');
 
   window.addEventListener('hashchange', renderPage);
   window.addEventListener('load', function () {

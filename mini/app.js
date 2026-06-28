@@ -516,6 +516,9 @@
 
   window.addEventListener('hashchange', renderPage);
   window.addEventListener('load', function () {
+    // 版本号
+    console.info('%c涅凰智农 IoT (C端) v' + (window.APP_VERSION_STRING || '?'), 'color:#2ecc71;font-weight:bold');
+
     // 恢复 token
     var token = localStorage.getItem('token');
     var uid = localStorage.getItem('user_id');

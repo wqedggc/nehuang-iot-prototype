@@ -234,7 +234,8 @@
       return { data: { command_id: Date.now(), action, action_label: { start: '开启', stop: '停止', close: '关闭' }[action] || action, status: success ? 'succeeded' : 'failed', message: success ? '操作成功' : '设备无响应，请重试' } };
     },
     'POST /api/v1/admin/login': function (body) {
-      if (!body.username || !body.password) return { code: 400, message: '用户名和密码不能为空' };
+      console.debug('[MockAPI] admin/login body=', body);
+      if (!body || !body.username || !body.password) return { code: 400, message: '用户名和密码不能为空' };
       if (body.password !== 'admin123') return { code: 4013, message: '用户名或密码错误' };
       const user = MOCK_USERS.find(u => u.username === body.username && (u.role === 1 || u.role === 2));
       if (!user) return { code: 4013, message: '用户名或密码错误' };

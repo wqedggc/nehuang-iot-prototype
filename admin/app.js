@@ -79,7 +79,11 @@
     currentPage = route.page;
     var container = $('#main-content');
 
-    if (route.page !== 'login' && !localStorage.getItem('admin_token')) {
+    if (route.page !== 'login' && !localStorage.getItem('nh_admin_token')) {
+      // 检测是否有 mini token 但没有 admin token → 提示权限不足
+      if (localStorage.getItem('nh_mini_token')) {
+        showToast('无管理员权限，请使用管理员账号登录', 'error');
+      }
       navigate('login');
       return;
     }
@@ -151,7 +155,7 @@
     try {
       var res = await MockAPI.login('admin', { username: username, password: password });
       if (res.data && res.data.token) {
-        localStorage.setItem('admin_token', res.data.token);
+        localStorage.setItem('nh_admin_token', res.data.token);
         localStorage.setItem('admin_user', JSON.stringify(res.data));
         MockAPI.setUserId(res.data.user_id);
         updateSidebarUser(res.data);
@@ -181,7 +185,7 @@
   }
 
   function doLogout() {
-    localStorage.removeItem('admin_token');
+    localStorage.removeItem('nh_admin_token');
     localStorage.removeItem('admin_user');
     showToast('已退出登录', 'info');
     navigate('login');
@@ -862,7 +866,7 @@
 
   window.addEventListener('hashchange', renderPage);
   window.addEventListener('load', function () {
-    var token = localStorage.getItem('admin_token');
+    var token = localStorage.getItem('nh_admin_token');
     var userJson = localStorage.getItem('admin_user');
     if (token && userJson) {
       try {

@@ -12,6 +12,10 @@
  *
  * 切换真实后端地址：
  *   修改 API_BASE 为真实 Go 服务地址。
+ *
+ * Token 命名约定：
+ *   nh_admin_token — 管理端 JWT（admin/super_admin）
+ *   nh_mini_token  — C 端 JWT（farmer）
  */
 
 (function (global) {
@@ -29,6 +33,31 @@
 
   // C 端用户 ID（mock 模式使用）
   let currentUserId = 3;
+
+  // ============================================================
+  // Token 工具
+  // ============================================================
+
+  /**
+   * 根据接口路径自动选择对应的 token：
+   *   /api/v1/admin/* → nh_admin_token
+   *   /api/v1/mini/*  → nh_mini_token
+   *   其他接口        → 不带 token
+   */
+  function getTokenForPath(path) {
+    // login 接口不需要带 token（可能会带一个已过期的 token 造成困扰）
+    if (path === '/api/v1/admin/login' || path === '/api/v1/mini/mock-login') {
+      return null;
+    }
+    if (path.indexOf('/api/v1/admin/') === 0 || path === '/api/v1/admin') {
+      return localStorage.getItem('nh_admin_token') || null;
+    }
+    if (path.indexOf('/api/v1/mini/') === 0 || path === '/api/v1/mini') {
+      return localStorage.getItem('nh_mini_token') || null;
+    }
+    // /api/v1/gateways 等通用接口 — 优先 admin token，其次 mini token
+    return localStorage.getItem('nh_admin_token') || localStorage.getItem('nh_mini_token') || null;
+  }
 
   // ============================================================
   // Mock 数据
@@ -421,6 +450,16 @@
     return { cleanPath: path.substring(0, qsIdx), query };
   }
 
+  /**
+   * 判断路径是否为需要 admin token 的保护接口（排除 login）。
+   */
+  function isProtectedAdminPath(path) {
+    if (path.indexOf('/api/v1/admin/') !== 0 && path !== '/api/v1/admin') return false;
+    // login 是公开接口，不走 401/403 拦截
+    if (path === '/api/v1/admin/login') return false;
+    return true;
+  }
+
   // ============================================================
   // 核心请求函数
   // MODE='real'：先请求真实后端，失败则 fallback mock
@@ -435,11 +474,13 @@
       return mockRequest(method, cleanPath, query, body);
     }
 
-    // real 模式：先尝试真实后端，失败 fallback mock
+    // real 模式：先尝试真实后端
     try {
       const realResult = await realRequest(method, cleanPath, query, body);
       return realResult;
     } catch (e) {
+      // admin 接口的 401/403 错误已经在 realRequest 中直接抛出，
+      // 不会走到这里。走到这里的只有网络/超时/404 等错误。
       console.warn('[API] 真实后端请求失败，fallback 到 mock:', method, cleanPath, e.message);
       return mockRequest(method, cleanPath, query, body);
     }
@@ -450,7 +491,7 @@
 
   async function realRequest(method, cleanPath, query, body) {
     const headers = { 'Content-Type': 'application/json' };
-    const token = localStorage.getItem('token') || localStorage.getItem('admin_token');
+    const token = getTokenForPath(cleanPath);
     if (token) headers['Authorization'] = 'Bearer ' + token;
 
     let url = API_BASE + cleanPath;
@@ -470,24 +511,31 @@
       res = await fetch(url, opts);
     } catch (fetchErr) {
       clearTimeout(timeoutId);
-      // fetch 失败有两种典型情况：
-      // 1. AbortController 触发（超时） → fetchErr.name === 'AbortError'
-      // 2. CORS/网络不可达（ERR_CONNECTION_REFUSED / net::ERR_TIMED_OUT） → TypeError
       if (fetchErr.name === 'AbortError') {
         console.warn('[API] 请求超时 (' + (REAL_REQUEST_TIMEOUT / 1000) + 's):', method, cleanPath, '→ fallback mock');
         throw new Error('请求超时，已切换本地模式');
       }
-      // CORS 错误在浏览器里也表现为 TypeError，无法区分，统一提示
       console.warn('[API] 网络请求失败（可能 CORS 或后端不可达）:', method, cleanPath, fetchErr);
       throw new Error('网络不可用，已切换本地模式');
     }
     clearTimeout(timeoutId);
 
-    // 401: token 过期/无效，清除本地 token 并跳转登录
+    // ─── Admin 保护接口 401/403：不允许 fallback mock，直接报错 ───
+    if (isProtectedAdminPath(cleanPath)) {
+      if (res.status === 401) {
+        // 清除可能残留的错误 token
+        localStorage.removeItem('nh_admin_token');
+        throw new Error('认证失败，请使用管理员账号重新登录');
+      }
+      if (res.status === 403) {
+        // 403 = 权限不足（如用 farmer token 访问 admin 接口）
+        throw new Error('权限不足，请使用管理员账号登录');
+      }
+    }
+
+    // ─── Mini 接口 401：清除 mini token ───
     if (res.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('admin_token');
-      setTimeout(() => { window.location.hash = '#login'; }, 500);
+      localStorage.removeItem('nh_mini_token');
       throw new Error('认证失败，请重新登录');
     }
 

@@ -80,7 +80,7 @@
     var container = $('#main-content');
 
     // 未登录则跳转登录
-    if (route.page !== 'login' && !localStorage.getItem('token')) {
+    if (route.page !== 'login' && !localStorage.getItem('nh_mini_token')) {
       navigate('login');
       return;
     }
@@ -135,7 +135,7 @@
     try {
       var res = await MockAPI.login('mini', credentials);
       if (res.data && res.data.token) {
-        localStorage.setItem('token', res.data.token);
+        localStorage.setItem('nh_mini_token', res.data.token);
         localStorage.setItem('user_id', res.data.user_id);
         MockAPI.setUserId(res.data.user_id);
         showToast('登录成功', 'success');
@@ -157,7 +157,7 @@
 
     try {
       // 确认 JWT 存在
-      var token = localStorage.getItem('token');
+      var token = localStorage.getItem('nh_mini_token');
       if (!token) {
         container.innerHTML = '<div class="empty-state">' +
           '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 15v2m0-8v4m0 0a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/></svg>' +
@@ -502,7 +502,7 @@
   }
 
   function doLogout() {
-    localStorage.removeItem('token');
+    localStorage.removeItem('nh_mini_token');
     localStorage.removeItem('user_id');
     currentUser = null;
     showToast('已退出登录', 'info');
@@ -538,7 +538,7 @@
     console.info('%c涅凰智农 IoT (C端) v' + (window.APP_VERSION_STRING || '?'), 'color:#2ecc71;font-weight:bold');
 
     // 恢复 token
-    var token = localStorage.getItem('token');
+    var token = localStorage.getItem('nh_mini_token');
     var uid = localStorage.getItem('user_id');
     if (token && uid) {
       MockAPI.setUserId(parseInt(uid));

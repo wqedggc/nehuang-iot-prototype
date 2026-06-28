@@ -510,10 +510,14 @@
   setInterval(updateClock, 1000);
   updateClock();
 
-  // 版本号（控制台 + 页脚）
+  // 版本号（控制台 + 页脚 + 右下角浮标）
   console.info('%c涅凰智农 IoT v' + (window.APP_VERSION_STRING || '?'), 'color:#2ecc71;font-weight:bold');
+  // 侧边栏页脚
   var versionEl = document.getElementById('app-version');
   if (versionEl) versionEl.textContent = 'v' + (window.APP_VERSION || '?');
+  // 登录页也能看到的右下角浮标
+  var badge = document.getElementById('version-badge');
+  if (badge && window.APP_VERSION) badge.textContent = 'v' + window.APP_VERSION;
 
   window.addEventListener('hashchange', renderPage);
   window.addEventListener('load', function () {
